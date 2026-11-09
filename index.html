@@ -158,7 +158,7 @@ function parseBill(xml,hdrXml){
     const nm=(after[0]||'').match(/^\(([^)]*)\)?\s*([\s\S]*)$/);
     if(nm){v.name=nm[1].trim();v.lines=(nm[2]?[nm[2].trim()]:[]).concat(after.slice(1))}else{v.name=(after[0]||'').trim();v.lines=after.slice(1)}
     v.exp=!v.duty.includes('AbywôZ');v.scr=v.exp&&!v.duty.includes('we‡klÁ gZvgZ');v.note=[];v.bTax=v.tax;v.bNet=v.net;v.staff=v.duty.includes('cÖZ¨ÿfv‡e');
-    v.W=(v.duty.match(/(m¤§vbx|Awa‡ekb) fvZv eve`/)||[])[1]||'m¤§vbx';v.sess=/mfvq Dcw¯’Z/.test(v.duty);v.date=(v.duty.match(/\d{1,2}\/\d{1,2}\/\d{4}/)||[''])[0];
+    v.W=(v.duty.match(/(m¤§vbx|Awa‡ekb) fvZv eve`/)||[])[1]||'m¤§vbx';v.sess=/mfvq Dcw¯’Z/.test(v.duty);v.date=((v.duty.match(/(\d{1,2}\/\d{1,2}\/\d{4})\s*wL\S*\s*Zvwi‡L\s*AbywôZ/)||[])[1])||((v.duty.replace(/ZvwiL\s*:\s*\d{1,2}\/\d{1,2}\/\d{4}/g,'').match(/\d{1,2}\/\d{1,2}\/\d{4}/)||[''])[0]);
     if(Math.abs(v.gross-v.tax-v.stamp-v.net)>0.001)v.warn.push('যোগ-বিয়োগ মেলেনি (ভাতা − আয়কর − স্ট্যাম্প ≠ নীট)');
     if(!v.exp&&Math.abs(v.gross*0.2-v.tax)>=1)v.warn.push('আয়কর ২০% নয় (পূর্ণ টাকায় রাউন্ডিং ছাড়িয়ে পার্থক্য)');
     if(v.stamp!==10)v.warn.push('রাজস্ব স্ট্যাম্প ১০/- নয়');
