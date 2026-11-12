@@ -87,7 +87,7 @@ select.fysel{font:inherit;padding:5px 8px;border:1px solid var(--bd);border-radi
   <div class="card" id="sc" hidden><div class="ttl"><div class="a u" id="p1"></div><div class="b">গাজীপুর-1707</div></div><div id="sh"></div></div></main>
 </div></section>
 <section class="tab" id="tab-rec" hidden><div class="rec">
- <div class="tb"><button id="bsave">💾 Save<kbd>Ctrl+S</kbd></button><button id="bbak" class="g">⬇ Backup<kbd>Alt+B</kbd></button><button id="brst" class="g">⬆ Restore<kbd>Alt+R</kbd></button><input id="rf" type="file" accept=".json,application/json" hidden>
+ <div class="tb"><button id="bsave">💾 Save<kbd>Ctrl+S</kbd></button><button id="bbak" class="g">⬇ Backup<kbd>Alt+B</kbd></button><button id="bfold" class="g" title="ব্যাকআপ রাখার ফোল্ডার বেছে নিন (Shift+Alt+B)">📁 ফোল্ডার</button><button id="brst" class="g">⬆ Restore<kbd>Alt+R</kbd></button><input id="rf" type="file" accept=".json,application/json" hidden>
   <span id="curst" class="mu"></span><span class="sp"></span><label class="fyl">অর্থ বছর <select class="fysel"></select></label><input type="search" id="q" placeholder="🔎 সার্চ: বিল নং, নাম, ধরন, টাকা, তারিখ…"><span id="rcount" class="mu"></span></div>
  <div class="tw"><table class="rt"><thead><tr><th>#</th><th>বিল নং</th><th>ধরন</th><th>ভাউচার</th><th>নাম</th><th style="text-align:right">মোট ভাতা</th><th style="text-align:right">আয়কর</th><th style="text-align:right">স্ট্যাম্প</th><th style="text-align:right">নীট প্রদেয়</th><th>সংরক্ষণের সময়</th><th></th></tr></thead><tbody id="rb"></tbody></table><div id="rempty" hidden></div></div>
  <div class="tf" id="rtot"></div>
@@ -474,22 +474,34 @@ const bkSet=async(k,v)=>{const d=await bkDB();return new Promise((res,rej)=>{con
 function bkDownload(b,name){const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove()}
 let BK_BUSY=false;
 const bkTmo=(p,ms,msg)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(msg||'সময় শেষ হয়ে গেছে')),ms))]);
-async function backup(change){
+async function bkWrite(root,b,name){
+  const dir=await bkTmo(root.getDirectoryHandle(BK_TOOL,{create:true}),8000),fh=await bkTmo(dir.getFileHandle(name,{create:true}),8000),w=await bkTmo(fh.createWritable(),8000);
+  await bkTmo(w.write(b),20000);await bkTmo(w.close(),20000);
+  toast('✓ ব্যাকআপ সেভ হয়েছে: '+root.name+'\\'+BK_TOOL+'\\'+name+' ('+REC.length+'টি রেকর্ড)')}
+async function backup(pick){
   if(BK_BUSY){toast('ব্যাকআপ চলছে, একটু অপেক্ষা করুন…');return}
   if(!REC.length){toast('রেকর্ড খালি — ব্যাকআপ নেওয়ার কিছু নেই',1);return}
   BK_BUSY=true;let b,name;
   try{
-    toast('⏳ ব্যাকআপ তৈরি হচ্ছে…');
     b=new Blob([JSON.stringify({app:BK_TOOL,version:2,savedAt:new Date().toISOString(),fys:FYS,records:REC},null,1)],{type:'application/json'});name='BillSummary_'+stamp()+'.json';
-    if(!window.showDirectoryPicker||!window.isSecureContext){bkDownload(b,name);toast('⚠ এই ব্রাউজারে/পদ্ধতিতে সরাসরি ফোল্ডারে সেভ হয় না (Chrome/Edge লাগবে) — ডাউনলোড ফোল্ডারে নামানো হয়েছে ('+name+')',1);return}
+    const fsOk=!!window.showDirectoryPicker&&window.isSecureContext;
+    if(pick){
+      /* Shift+Backup / 📁 বাটন: ফোল্ডার নির্বাচন (একবারই লাগে) */
+      if(!fsOk){bkDownload(b,name);toast('⚠ এই ব্রাউজারে ফোল্ডার নির্বাচন চলে না (Chrome/Edge লাগবে) — ডাউনলোড ফোল্ডারে নামানো হয়েছে ('+name+')',1);return}
+      toast('ফোল্ডার বেছে নিন: '+BK_ROOT);
+      const root=await showDirectoryPicker({id:'bstbackup',mode:'readwrite'});
+      try{await bkTmo(bkSet('root',root),2500)}catch(e){}
+      await bkWrite(root,b,name);return}
+    /* সাধারণ Backup: সংরক্ষিত ফোল্ডার থাকলে সেখানে, না থাকলে সরাসরি ডাউনলোড — কখনো আটকে থাকে না */
     let root=null;
-    if(!change){try{root=await bkTmo(bkGet('root'),2500,'সংরক্ষিত ফোল্ডার পড়া যায়নি')}catch(e){root=null}}
-    if(root){try{let p=await bkTmo(root.queryPermission({mode:'readwrite'}),2500);if(p!=='granted')p=await bkTmo(root.requestPermission({mode:'readwrite'}),20000,'ফোল্ডারের অনুমতি পাওয়া যায়নি');if(p!=='granted')root=null}catch(e){root=null}}
-    if(!root){toast('ফোল্ডার বেছে নিন: '+BK_ROOT+' (শুধু প্রথমবার)');
-      root=await showDirectoryPicker({id:'bstbackup',mode:'readwrite'});try{await bkTmo(bkSet('root',root),2500)}catch(e){}}
-    const dir=await bkTmo(root.getDirectoryHandle(BK_TOOL,{create:true}),8000),fh=await bkTmo(dir.getFileHandle(name,{create:true}),8000),w=await bkTmo(fh.createWritable(),8000);
-    await bkTmo(w.write(b),20000);await bkTmo(w.close(),20000);
-    toast('✓ ব্যাকআপ সেভ হয়েছে: '+root.name+'\\'+BK_TOOL+'\\'+name+' ('+REC.length+'টি রেকর্ড)')
+    if(fsOk){try{root=await bkTmo(bkGet('root'),2500)}catch(e){root=null}}
+    if(root){
+      try{let p=await bkTmo(root.queryPermission({mode:'readwrite'}),2500);if(p!=='granted')p=await bkTmo(root.requestPermission({mode:'readwrite'}),12000,'ফোল্ডারের অনুমতি পাওয়া যায়নি');
+        if(p==='granted'){await bkWrite(root,b,name);return}}
+      catch(e){bkDownload(b,name);toast('⚠ সংরক্ষিত ফোল্ডারে সেভ হয়নি ('+(e&&e.message||e)+') — ডাউনলোড ফোল্ডারে নামানো হয়েছে ('+name+')। ফোল্ডার ঠিক করতে Shift+Backup চাপুন',1);return}
+    }
+    bkDownload(b,name);
+    toast('✓ ব্যাকআপ ডাউনলোড হয়েছে: '+name+' ('+REC.length+'টি রেকর্ড)'+(fsOk?' — নির্দিষ্ট ফোল্ডারে সেভ করতে 📁 ফোল্ডার বাটন বা Shift+Backup চাপুন':''))
   }catch(e){
     if(e&&e.name==='AbortError'){toast('ফোল্ডার বাছাই বাতিল — ব্যাকআপ সেভ হয়নি',1);return}
     try{if(!b)throw e;bkDownload(b,name);toast('⚠ ফোল্ডারে সেভ করা যায়নি ('+(e&&e.message||e)+') — ডাউনলোড ফোল্ডারে নামানো হয়েছে ('+name+')',1)}catch(e2){toast('⚠ ব্যাকআপ ব্যর্থ: '+(e2&&e2.message||e2),1)}
@@ -506,7 +518,7 @@ $('rb').onclick=e=>{const b=e.target.closest('button[data-a]');if(!b)return;cons
   if(a==='open')openRec(id);else if(a==='dl')recDownload(id);
   else if(a==='del'){const r=REC.find(x=>x.id===id);if(r&&confirm('বিল নং '+(r.billNo||'—')+' রেকর্ডটি মুছে ফেলবেন?')){REC=REC.filter(x=>x.id!==id);hayCache.delete(id);if(S&&S.recId===id){S.recId=null;S.saved=false}recPersist();recRender();toast('রেকর্ড মুছে ফেলা হয়েছে')}}};
 $('q').oninput=recRender;$('tg').onclick=()=>showTab('gen');$('tr').onclick=()=>showTab('rec');
-$('sv').onclick=$('bsave').onclick=saveCur;$('bbak').onclick=()=>backup(false);$('brst').onclick=()=>$('rf').click();
+$('sv').onclick=$('bsave').onclick=saveCur;$('bbak').onclick=e=>backup(!!e.shiftKey);$('bfold').onclick=()=>backup(true);$('brst').onclick=()=>$('rf').click();
 document.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&!e.altKey&&e.code==='KeyS'){e.preventDefault();saveCur()}
   else if(e.altKey&&!e.ctrlKey&&!e.metaKey&&(e.code==='KeyB'||String(e.key).toLowerCase()==='b')){e.preventDefault();backup(e.shiftKey)}
